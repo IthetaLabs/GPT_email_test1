@@ -50,6 +50,46 @@
   const box = document.getElementById('cp-html');
   const status = document.getElementById('cp-status');
 
+  // ---------------- Emoji whitelist & sanitizer ----------------
+  const ALLOWED = new Set(['📌','🔔','❗','✅','❌','📞','📧']);
+  const REPLACE = {
+    '🙂':'✅','😀':'✅','😁':'✅','😊':'✅','😃':'✅','😄':'✅',
+    '👍':'✅','👌':'✅','✔️':'✅','☑️':'✅',
+    'ℹ️':'📌','📍':'📌',
+    '⏰':'🔔','🛎️':'🔔',
+    '⚠️':'❗','❕':'❗','❗️':'❗',
+    '☎️':'📞','📱':'📞',
+    '✉️':'📧','💌':'📧'
+  };
+
+  let EMOJI_RE;
+  try {
+    EMOJI_RE = new RegExp("\\p{Extended_Pictographic}\\uFE0F?|\\uFE0F", "gu");
+  } catch {
+    EMOJI_RE = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]\uFE0F?/gu;
+  }
+
+  function sanitizeText(s) {
+    return s.replace(EMOJI_RE, ch => {
+      if (ALLOWED.has(ch)) return ch;
+      if (REPLACE[ch] && ALLOWED.has(REPLACE[ch])) return REPLACE[ch];
+      return '';
+    });
+  }
+
+  function sanitizeNodeText(node){
+    const w = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, null);
+    const nodes = [];
+    while (w.nextNode()) nodes.push(w.currentNode);
+    nodes.forEach(n => { n.nodeValue = sanitizeText(n.nodeValue); });
+  }
+
+  // ---------------- Live sanitization ----------------
+  box.addEventListener('input', () => {
+    sanitizeNodeText(box);
+  });
+
+  // ---------------- Load helpers ----------------
   function fromQuery(name){ return new URLSearchParams(location.search).get(name); }
   function fromHash(name){
     const h = location.hash.startsWith('#') ? location.hash.slice(1) : location.hash;
@@ -63,8 +103,6 @@
     return parts[name] || null;
   }
   function safeDecode(s){ try { return decodeURIComponent(s); } catch(e){ return s; } }
-
-  // URL-safe Base64 -> UTF-8 string
   function b64UrlToUtf8(s){
     try{
       s = (s||'').replace(/-/g,'+').replace(/_/g,'/');
@@ -75,76 +113,39 @@
       return new TextDecoder('utf-8').decode(bytes);
     }catch(e){ return null; }
   }
-
   function setHTML(html){ box.innerHTML = html; }
-
   function setTextAsHtml(plain){
     const escaped = plain.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     const html = escaped.split(/\n{2,}/).map(p => `<p>${p.replace(/\n/g,'<br>')}</p>`).join('');
     box.innerHTML = html || '<p>(empty)</p>';
   }
 
-  // Load order: #b64h (HTML) -> #html (HTML) -> #text (plain) -> ?text (plain)
+  // ---------------- Load content ----------------
   const b64h = fromHash('b64h');
   const hHtml = fromHash('html');
-  const hText = fromHash('text');      // support #text=
+  const hText = fromHash('text');
   const qText = fromQuery('text');
 
   let loaded = '(none)';
-
   if (b64h) {
     const raw = b64UrlToUtf8(b64h);
-    if (raw != null) { setHTML(raw); loaded = 'b64h'; }
+    if (raw != null) { setHTML(raw); sanitizeNodeText(box); loaded = 'b64h'; }
   } else if (hHtml) {
-    setHTML(safeDecode(hHtml)); loaded = 'html';
+    setHTML(safeDecode(hHtml)); sanitizeNodeText(box); loaded = 'html';
   } else if (hText) {
     const t = safeDecode(hText).replace(/\\n/g,'\n').replace(/\r\n/g,'\n');
-    setTextAsHtml(t); loaded = 'text(hash)';
+    setTextAsHtml(t); sanitizeNodeText(box); loaded = 'text(hash)';
   } else if (qText) {
     const t = safeDecode(qText).replace(/\\n/g,'\n').replace(/\r\n/g,'\n');
-    setTextAsHtml(t); loaded = 'text(query)';
+    setTextAsHtml(t); sanitizeNodeText(box); loaded = 'text(query)';
   }
 
   // ---------------- Copy (Rich HTML) ----------------
   document.getElementById('copyRich').addEventListener('click', async () => {
     try {
       const src = document.getElementById('cp-html');
-      const clone = src.cloneNode(true); // work on a clone
-
-// Emoji whitelist
-const ALLOWED = new Set(['📌','🔔','❗','✅','❌','📞','📧']);
-const REPLACE = {
-  '🙂':'✅','😀':'✅','😁':'✅','😊':'✅','😃':'✅','😄':'✅',
-  '👍':'✅','👌':'✅','✔️':'✅','☑️':'✅',
-  'ℹ️':'📌','📍':'📌',
-  '⏰':'🔔','🛎️':'🔔',
-  '⚠️':'❗','❕':'❗','❗️':'❗',
-  '☎️':'📞','📱':'📞',
-  '✉️':'📧','💌':'📧'
-};
-
-let EMOJI_RE;
-try {
-  EMOJI_RE = new RegExp("\\p{Extended_Pictographic}\\uFE0F?|\\uFE0F", "gu");
-} catch {
-  EMOJI_RE = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]\uFE0F?/gu;
-}
-
-function sanitizeText(s) {
-  return s.replace(EMOJI_RE, ch => {
-    if (ALLOWED.has(ch)) return ch;
-    if (REPLACE[ch] && ALLOWED.has(REPLACE[ch])) return REPLACE[ch];
-    return '';
-  });
-}
-
-      // Walk text nodes and sanitize emojis
-      (function walk(node){
-        const w = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, null);
-        const nodes = [];
-        while (w.nextNode()) nodes.push(w.currentNode);
-        nodes.forEach(n => { n.nodeValue = sanitizeText(n.nodeValue); });
-      })(clone);
+      const clone = src.cloneNode(true);
+      sanitizeNodeText(clone);
 
       // Heading spacing
       clone.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(h => { h.style.margin = '0 0 8pt 0'; });
@@ -155,14 +156,13 @@ function sanitizeText(s) {
         }
       });
 
-      // Outlook-safe wrapper
       const wrapped = `<div style="font-family: Arial, Helvetica, sans-serif; font-size: 11pt; line-height: 1.5;">${clone.innerHTML}</div>`;
 
       if (navigator.clipboard && window.ClipboardItem) {
         await navigator.clipboard.write([
           new ClipboardItem({
             'text/html': new Blob([wrapped], { type: 'text/html' }),
-            'text/plain': new Blob([src.innerText], { type: 'text/plain' })
+            'text/plain': new Blob([sanitizeText(src.innerText)], { type: 'text/plain' })
           })
         ]);
       } else {
@@ -182,6 +182,7 @@ function sanitizeText(s) {
       status.textContent = 'Copied!';
       setTimeout(()=> status.textContent = '', 1800);
     } catch(e){
+      console.error(e);
       status.textContent = 'Copy failed. Select all and press Ctrl/Cmd + C.';
     }
   });
@@ -189,7 +190,7 @@ function sanitizeText(s) {
   // ---------------- Copy (Plain Text) ----------------
   document.getElementById('copyPlain').addEventListener('click', async () => {
     try{
-      const txt = box.innerText;
+      const txt = sanitizeText(box.innerText);
       if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(txt); }
       else {
         const ta = document.createElement('textarea');
@@ -199,11 +200,12 @@ function sanitizeText(s) {
       status.textContent = 'Copied!';
       setTimeout(()=> status.textContent='', 1800);
     } catch(e){
+      console.error(e);
       status.textContent = 'Copy failed.';
     }
   });
 
-  // (Optional) small debug badge to verify loader
+  // Debug badge
   const loadedBadge = document.createElement('div');
   loadedBadge.style.cssText = 'margin-top:8px;font-size:12px;color:#6b7280';
   loadedBadge.textContent = 'Loaded via: ' + loaded;
