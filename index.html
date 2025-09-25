@@ -132,13 +132,12 @@ try {
 
 function sanitizeText(s) {
   return s.replace(EMOJI_RE, ch => {
-    if (ALLOWED.has(ch)) {
-      return ch; // allowed directly
-    if (REPLACE[ch] && ALLOWED.has(REPLACE[ch])) {
-      return REPLACE[ch]; // replace but only if mapped emoji is allowed
-    return ''; // strip everything else
+    if (ALLOWED.has(ch)) return ch;
+    if (REPLACE[ch] && ALLOWED.has(REPLACE[ch])) return REPLACE[ch];
+    return '';
   });
-      }
+}
+
       // Walk text nodes and sanitize emojis
       (function walk(node){
         const w = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, null);
