@@ -14,11 +14,19 @@
   .ok{color:#16a34a}
   .hint{font-size:12px;color:#6b7280;margin:10px 0 0 0}
   /* The content block the user will copy */
+  /* ---- Outlook-friendly preview styles ---- */
   #cp-html{
     border:1px solid #d1d5db;border-radius:12px;padding:16px;background:#fff;
-    /* Outlook-friendly typography */
-    font-family: Arial, Helvetica, sans-serif;
-    font-size: 14px; line-height: 1.5;
+    font-family: Arial, Helvetica, sans-serif; /* font */
+    font-size: 11pt;                          /* size */
+    line-height: 1.5;                          /* spacing */
+  }
+  #cp-html p{ margin:0 0 10px 0 }
+  #cp-html h1,#cp-html h2,#cp-html h3{ margin:16px 0 8px 0 }
+  #cp-html ul,#cp-html ol{ margin:0 0 12px 20px }
+  #cp-html li{ margin:6px 0 }
+  /* optional: enforce typography on all children in the preview */
+  /* #cp-html * { font-family: Arial, Helvetica, sans-serif; font-size: 11pt; line-height: 1.5; }
   }
   /* Reasonable default spacing for pasted paragraphs/lists */
   #cp-html p{margin:0 0 10px 0}
