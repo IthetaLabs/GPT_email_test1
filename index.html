@@ -107,28 +107,59 @@
   }
 
   // Copy rich HTML
-  document.getElementById('copyRich').addEventListener('click', async () => {
-    try {
-      // Prefer Clipboard API with text/html payload
-      const html = box.innerHTML;
-      if (navigator.clipboard && window.ClipboardItem) {
-        const blob = new Blob([html], { type: 'text/html' });
-        await navigator.clipboard.write([new ClipboardItem({ 'text/html': blob, 'text/plain': new Blob([box.innerText], {type:'text/plain'}) })]);
-      } else {
-        // Fallback: select content and execCommand
-        const range = document.createRange();
-        range.selectNodeContents(box);
-        const sel = window.getSelection();
-        sel.removeAllRanges(); sel.addRange(range);
-        document.execCommand('copy');
-        sel.removeAllRanges();
+document.getElementById('copyRich').addEventListener('click', async () => {
+  try {
+    // Work on a clone so we don’t mutate the on-screen preview
+    const src = document.getElementById('cp-html');
+    const clone = src.cloneNode(true);
+
+    // 1) Ensure headings have bottom margin
+    clone.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(h => {
+      h.style.margin = '0 0 8pt 0'; // add 8pt gap below every heading
+    });
+
+    // 2) Ensure the first block after any heading has a top margin
+    clone.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(h => {
+      const next = h.nextElementSibling;
+      if (next && ['P','UL','OL','DIV'].includes(next.tagName)) {
+        // Only add if there isn’t already a margin-top
+        if (!next.style.marginTop) next.style.marginTop = '6pt';
       }
-      status.textContent = 'Copied!';
-      setTimeout(()=> status.textContent='', 1800);
-    } catch(e){
-      status.textContent = 'Copy failed. Select all and press Ctrl/Cmd + C.';
+    });
+
+    // Wrap with inline typography Outlook will keep
+    const wrapped =
+      `<div style="font-family: Arial, Helvetica, sans-serif; font-size: 11pt; line-height: 1.5;">${clone.innerHTML}</div>`;
+
+    if (navigator.clipboard && window.ClipboardItem) {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          'text/html': new Blob([wrapped], { type: 'text/html' }),
+          'text/plain': new Blob([src.innerText], { type: 'text/plain' })
+        })
+      ]);
+    } else {
+      // Fallback: copy via hidden editable container
+      const tmp = document.createElement('div');
+      tmp.style.position = 'fixed'; tmp.style.left = '-9999px';
+      tmp.contentEditable = 'true'; tmp.innerHTML = wrapped;
+      document.body.appendChild(tmp);
+
+      const range = document.createRange();
+      range.selectNodeContents(tmp);
+      const sel = window.getSelection();
+      sel.removeAllRanges(); sel.addRange(range);
+      document.execCommand('copy'); sel.removeAllRanges();
+
+      document.body.removeChild(tmp);
     }
-  });
+
+    document.getElementById('cp-status').textContent = 'Copied!';
+    setTimeout(()=> document.getElementById('cp-status').textContent = '', 1800);
+  } catch(e){
+    document.getElementById('cp-status').textContent = 'Copy failed. Select all and press Ctrl/Cmd + C.';
+  }
+});
 
   // Copy plain text
   document.getElementById('copyPlain').addEventListener('click', async () => {
