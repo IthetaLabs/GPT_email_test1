@@ -36,12 +36,15 @@
   const area = document.getElementById('cp-text');
   const status = document.getElementById('cp-status');
 
+  // ---- helpers ----
   function q(name){ return new URLSearchParams(location.search).get(name); }
   function fromHash(name){
     const h = location.hash.startsWith('#') ? location.hash.slice(1) : location.hash;
     if(!h) return null;
     const parts = h.split('&').reduce((acc, kv) => {
-      const [k, v=''] = kv.split('=');
+      const i = kv.indexOf('=');
+      if (i === -1) return acc;
+      const k = kv.slice(0,i), v = kv.slice(i+1);
       acc[k] = v;
       return acc;
     }, {});
@@ -49,20 +52,42 @@
   }
   function decodePlus(s){ return (s||'').replace(/\+/g,' '); }
   function normaliseNewlines(s){ return (s||'').replace(/\\n/g,'\n').replace(/\r\n/g,'\n'); }
-  function safeDecode(s){ try { return decodeURIComponent(s); } catch(e){ return s; } }
+  function safeDecodeURI(s){ try { return decodeURIComponent(s); } catch(e){ return s; } }
+  function b64UrlToText(s){
+    try {
+      s = (s||'').replace(/-/g, '+').replace(/_/g, '/');
+      while (s.length % 4 !== 0) s += '=';
+      return atob(s);
+    } catch(e){ return null; }
+  }
 
-  // Prefer #text, fall back to ?text
+  // Optional: strip basic markdown bold **…**
+  function stripBasicMarkdownBold(s){
+    return s.replace(/\*\*(.*?)\*\*/g, '$1');
+  }
+
+  // ---- load priority: #b64 -> #text -> ?text ----
+  const b64 = fromHash('b64');
   const hText = fromHash('text');
   const qText = q('text');
 
-  if (hText) {
-    area.value = normaliseNewlines( decodePlus( safeDecode(hText) ) );
+  let content = '';
+  if (b64) {
+    const t = b64UrlToText(b64);
+    if (t) content = t;
+  } else if (hText) {
+    content = normaliseNewlines( decodePlus( safeDecodeURI(hText) ) );
   } else if (qText) {
-    area.value = normaliseNewlines( decodePlus( safeDecode(qText) ) );
+    content = normaliseNewlines( decodePlus( safeDecodeURI(qText) ) );
   }
 
-  document.getElementById('cp-select-btn').addEventListener('click', ()=>{ area.focus(); area.select(); });
+  // Toggle this ON if you want to automatically remove **bold** markup:
+  // content = stripBasicMarkdownBold(content);
 
+  if (content) area.value = content;
+
+  // buttons
+  document.getElementById('cp-select-btn').addEventListener('click', ()=>{ area.focus(); area.select(); });
   document.getElementById('cp-copy-btn').addEventListener('click', async ()=>{
     try{
       area.focus(); area.select();
