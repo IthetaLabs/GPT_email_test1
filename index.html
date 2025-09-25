@@ -14,12 +14,12 @@
   .ok{color:#16a34a}
   .hint{font-size:12px;color:#6b7280;margin:10px 0 0 0}
 
-  /* ---- Outlook-friendly preview styles ---- */
+  /* Outlook-friendly preview */
   #cp-html{
     border:1px solid #d1d5db;border-radius:12px;padding:16px;background:#fff;
-    font-family: Arial, Helvetica, sans-serif;  /* font */
-    font-size: 11pt;                           /* size */
-    line-height: 1.5;                           /* spacing */
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 11pt;
+    line-height: 1.5;
   }
   #cp-html p{ margin:0 0 10px 0 }
   #cp-html h1,#cp-html h2,#cp-html h3{ margin:16px 0 8px 0 }
@@ -38,7 +38,6 @@
     <span id="cp-status" aria-live="polite" class="ok"></span>
   </div>
 
-  <!-- contenteditable so the browser can select/copy HTML -->
   <div id="cp-html" contenteditable="true">
     <p><em>Waiting for content…</em></p>
   </div>
@@ -65,11 +64,146 @@
   }
   function safeDecode(s){ try { return decodeURIComponent(s); } catch(e){ return s; } }
 
-  // URL-safe Base64 -> UTF-8 text
+  // URL-safe Base64 -> UTF-8 string
   function b64UrlToUtf8(s){
     try{
       s = (s||'').replace(/-/g,'+').replace(/_/g,'/');
       while (s.length % 4) s += '=';
       const bin = atob(s);
       const bytes = new Uint8Array(bin.length);
-      for (let i=0;i<bin.lengt
+      for (let i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i);
+      return new TextDecoder('utf-8').decode(bytes);
+    }catch(e){ return null; }
+  }
+
+  function setHTML(html){ box.innerHTML = html; }
+
+  function setTextAsHtml(plain){
+    const escaped = plain.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const html = escaped.split(/\n{2,}/).map(p => `<p>${p.replace(/\n/g,'<br>')}</p>`).join('');
+    box.innerHTML = html || '<p>(empty)</p>';
+  }
+
+  // Load order: #b64h (HTML) -> #html (HTML) -> #text (plain) -> ?text (plain)
+  const b64h = fromHash('b64h');
+  const hHtml = fromHash('html');
+  const hText = fromHash('text');      // support #text=
+  const qText = fromQuery('text');
+
+  let loaded = '(none)';
+
+  if (b64h) {
+    const raw = b64UrlToUtf8(b64h);
+    if (raw != null) { setHTML(raw); loaded = 'b64h'; }
+  } else if (hHtml) {
+    setHTML(safeDecode(hHtml)); loaded = 'html';
+  } else if (hText) {
+    const t = safeDecode(hText).replace(/\\n/g,'\n').replace(/\r\n/g,'\n');
+    setTextAsHtml(t); loaded = 'text(hash)';
+  } else if (qText) {
+    const t = safeDecode(qText).replace(/\\n/g,'\n').replace(/\r\n/g,'\n');
+    setTextAsHtml(t); loaded = 'text(query)';
+  }
+
+  // ---------------- Copy (Rich HTML) ----------------
+  document.getElementById('copyRich').addEventListener('click', async () => {
+    try {
+      const src = document.getElementById('cp-html');
+      const clone = src.cloneNode(true); // work on a clone
+
+      // Emoji whitelist
+      const ALLOWED = new Set(['📌','🔔','❗','✅','❌','📞','📧']);
+      const REPLACE = {
+        '🙂':'✅','😀':'✅','😁':'✅','😊':'✅','😃':'✅','😄':'✅',
+        '👍':'✅','👌':'✅','✔️':'✅','☑️':'✅',
+        'ℹ️':'📌','📍':'📌',
+        '⏰':'🔔','🛎️':'🔔',
+        '⚠️':'❗','❕':'❗','❗️':'❗',
+        '☎️':'📞','📱':'📞',
+        '✉️':'📧','💌':'📧'
+      };
+      let EMOJI_RE;
+      try { EMOJI_RE = new RegExp("\\p{Extended_Pictographic}\\uFE0F?|\\uFE0F","gu"); }
+      catch { EMOJI_RE = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]\uFE0F?/gu; }
+
+      function sanitizeText(s){
+        return s.replace(EMOJI_RE, ch => {
+          if (ALLOWED.has(ch)) return ch;
+          if (REPLACE[ch]) return REPLACE[ch];
+          return '';
+        });
+      }
+      // Walk text nodes and sanitize emojis
+      (function walk(node){
+        const w = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, null);
+        const nodes = [];
+        while (w.nextNode()) nodes.push(w.currentNode);
+        nodes.forEach(n => { n.nodeValue = sanitizeText(n.nodeValue); });
+      })(clone);
+
+      // Heading spacing
+      clone.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(h => { h.style.margin = '0 0 8pt 0'; });
+      clone.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(h => {
+        const next = h.nextElementSibling;
+        if (next && ['P','UL','OL','DIV'].includes(next.tagName)) {
+          if (!next.style.marginTop) next.style.marginTop = '6pt';
+        }
+      });
+
+      // Outlook-safe wrapper
+      const wrapped = `<div style="font-family: Arial, Helvetica, sans-serif; font-size: 11pt; line-height: 1.5;">${clone.innerHTML}</div>`;
+
+      if (navigator.clipboard && window.ClipboardItem) {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            'text/html': new Blob([wrapped], { type: 'text/html' }),
+            'text/plain': new Blob([src.innerText], { type: 'text/plain' })
+          })
+        ]);
+      } else {
+        const tmp = document.createElement('div');
+        tmp.style.position = 'fixed'; tmp.style.left = '-9999px';
+        tmp.contentEditable = 'true'; tmp.innerHTML = wrapped;
+        document.body.appendChild(tmp);
+
+        const range = document.createRange();
+        range.selectNodeContents(tmp);
+        const sel = window.getSelection();
+        sel.removeAllRanges(); sel.addRange(range);
+        document.execCommand('copy'); sel.removeAllRanges();
+        document.body.removeChild(tmp);
+      }
+
+      status.textContent = 'Copied!';
+      setTimeout(()=> status.textContent = '', 1800);
+    } catch(e){
+      status.textContent = 'Copy failed. Select all and press Ctrl/Cmd + C.';
+    }
+  });
+
+  // ---------------- Copy (Plain Text) ----------------
+  document.getElementById('copyPlain').addEventListener('click', async () => {
+    try{
+      const txt = box.innerText;
+      if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(txt); }
+      else {
+        const ta = document.createElement('textarea');
+        ta.value = txt; document.body.appendChild(ta);
+        ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+      }
+      status.textContent = 'Copied!';
+      setTimeout(()=> status.textContent='', 1800);
+    } catch(e){
+      status.textContent = 'Copy failed.';
+    }
+  });
+
+  // (Optional) small debug badge to verify loader
+  const loadedBadge = document.createElement('div');
+  loadedBadge.style.cssText = 'margin-top:8px;font-size:12px;color:#6b7280';
+  loadedBadge.textContent = 'Loaded via: ' + loaded;
+  document.querySelector('.wrap').appendChild(loadedBadge);
+})();
+</script>
+</body>
+</html>
