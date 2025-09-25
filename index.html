@@ -106,28 +106,67 @@
     setTextAsHtml(t);
   }
 
-  // Copy rich HTML
+<!-- Copy (Rich HTML) with emoji whitelist + heading spacing + Outlook-safe wrapper -->
+<script>
 document.getElementById('copyRich').addEventListener('click', async () => {
   try {
-    // Work on a clone so we don’t mutate the on-screen preview
     const src = document.getElementById('cp-html');
-    const clone = src.cloneNode(true);
+    const clone = src.cloneNode(true); // work on a clone, not the live preview
+
+    // ---- 0) Emoji whitelist enforcement (ADD/KEEP THIS SECTION) ----
+    // Only allow: 📌, 🔔, ❗, ✅, ❌, 📞, 📧
+    const ALLOWED = new Set(['📌','🔔','❗','✅','❌','📞','📧']);
+    // Map common non-approved emojis to allowed ones (extend as needed)
+    const REPLACE = {
+      '🙂':'✅','😀':'✅','😁':'✅','😊':'✅','😃':'✅','😄':'✅',
+      '👍':'✅','👌':'✅','✔️':'✅','☑️':'✅',
+      'ℹ️':'📌','📍':'📌',
+      '⏰':'🔔','🛎️':'🔔',
+      '⚠️':'❗','❕':'❗','❗️':'❗',
+      '☎️':'📞','📱':'📞',
+      '✉️':'📧','💌':'📧'
+    };
+
+    // Robust emoji matcher (Extended Pictographic). If not supported, we fall back below.
+    let EMOJI_RE;
+    try {
+      EMOJI_RE = new RegExp("\\p{Extended_Pictographic}\\uFE0F?|\\uFE0F","gu");
+    } catch {
+      // Fallback matcher covering many common emojis
+      EMOJI_RE = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]\uFE0F?/gu;
+    }
+
+    function sanitizeText(s) {
+      return s.replace(EMOJI_RE, ch => {
+        if (ALLOWED.has(ch)) return ch;       // keep allowed
+        if (REPLACE[ch]) return REPLACE[ch];  // map to nearest allowed
+        return '';                             // drop others
+      });
+    }
+
+    // Walk text nodes and sanitize emojis
+    (function walk(node){
+      const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, null);
+      const texts = [];
+      while (walker.nextNode()) texts.push(walker.currentNode);
+      texts.forEach(n => { n.nodeValue = sanitizeText(n.nodeValue); });
+    })(clone);
+    // ---- /emoji whitelist ----
 
     // 1) Ensure headings have bottom margin
     clone.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(h => {
-      h.style.margin = '0 0 8pt 0'; // add 8pt gap below every heading
+      h.style.margin = '0 0 8pt 0';
     });
 
     // 2) Ensure the first block after any heading has a top margin
     clone.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(h => {
       const next = h.nextElementSibling;
       if (next && ['P','UL','OL','DIV'].includes(next.tagName)) {
-        // Only add if there isn’t already a margin-top
         if (!next.style.marginTop) next.style.marginTop = '6pt';
       }
     });
 
-    // Wrap with inline typography Outlook will keep
+    // 3) Wrap with inline typography so Outlook preserves font/size/spacing
     const wrapped =
       `<div style="font-family: Arial, Helvetica, sans-serif; font-size: 11pt; line-height: 1.5;">${clone.innerHTML}</div>`;
 
@@ -156,7 +195,7 @@ document.getElementById('copyRich').addEventListener('click', async () => {
 
     document.getElementById('cp-status').textContent = 'Copied!';
     setTimeout(()=> document.getElementById('cp-status').textContent = '', 1800);
-  } catch(e){
+  } catch (e) {
     document.getElementById('cp-status').textContent = 'Copy failed. Select all and press Ctrl/Cmd + C.';
   }
 });
