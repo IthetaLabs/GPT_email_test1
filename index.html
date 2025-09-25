@@ -111,29 +111,35 @@
       const src = document.getElementById('cp-html');
       const clone = src.cloneNode(true); // work on a clone
 
-      // ---- 0) Emoji allow-list: keep ONLY these; drop all others ----
+      // Emoji whitelist
       const ALLOWED = new Set(['📌','🔔','❗','✅','❌','📞','📧']);
-
-      // Robust emoji matcher: full emoji clusters (pictographs with optional VS16 and ZWJ sequences).
+      const REPLACE = {
+        '🙂':'✅','😀':'✅','😁':'✅','😊':'✅','😃':'✅','😄':'✅',
+        '👍':'✅','👌':'✅','✔️':'✅','☑️':'✅',
+        'ℹ️':'📌','📍':'📌',
+        '⏰':'🔔','🛎️':'🔔',
+        '⚠️':'❗','❕':'❗','❗️':'❗',
+        '☎️':'📞','📱':'📞',
+        '✉️':'📧','💌':'📧'
+      };
       let EMOJI_RE;
-      try {
-        EMOJI_RE = new RegExp("(?:\\p{Extended_Pictographic}\\uFE0F?(?:\\u200D\\p{Extended_Pictographic}\\uFE0F?)*)","gu");
-      } catch {
-        EMOJI_RE = /(?:[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]\uFE0F?(?:\u200D[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]\uFE0F?)*)/gu;
-      }
+      try { EMOJI_RE = new RegExp("\\p{Extended_Pictographic}\\uFE0F?|\\uFE0F","gu"); }
+      catch { EMOJI_RE = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]\uFE0F?/gu; }
 
-      function sanitizeTextKeepOnlyAllowed(s) {
-        return s.replace(EMOJI_RE, (cluster) => (ALLOWED.has(cluster) ? cluster : ""));
+      function sanitizeText(s){
+        return s.replace(EMOJI_RE, ch => {
+          if (ALLOWED.has(ch)) return ch;
+          if (REPLACE[ch]) return REPLACE[ch];
+          return '';
+        });
       }
-
       // Walk text nodes and sanitize emojis
       (function walk(node){
         const w = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, null);
         const nodes = [];
         while (w.nextNode()) nodes.push(w.currentNode);
-        nodes.forEach(n => { n.nodeValue = sanitizeTextKeepOnlyAllowed(n.nodeValue); });
+        nodes.forEach(n => { n.nodeValue = sanitizeText(n.nodeValue); });
       })(clone);
-      // ---- /emoji allow-list ----
 
       // Heading spacing
       clone.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(h => { h.style.margin = '0 0 8pt 0'; });
@@ -151,7 +157,7 @@
         await navigator.clipboard.write([
           new ClipboardItem({
             'text/html': new Blob([wrapped], { type: 'text/html' }),
-            'text/plain': new Blob([clone.innerText], { type: 'text/plain' }) // use sanitized clone for plain text too
+            'text/plain': new Blob([src.innerText], { type: 'text/plain' })
           })
         ]);
       } else {
