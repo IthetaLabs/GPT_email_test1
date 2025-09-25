@@ -36,7 +36,6 @@
   const area = document.getElementById('cp-text');
   const status = document.getElementById('cp-status');
 
-  // ---- helpers ----
   function q(name){ return new URLSearchParams(location.search).get(name); }
   function fromHash(name){
     const h = location.hash.startsWith('#') ? location.hash.slice(1) : location.hash;
@@ -53,6 +52,8 @@
   function decodePlus(s){ return (s||'').replace(/\+/g,' '); }
   function normaliseNewlines(s){ return (s||'').replace(/\\n/g,'\n').replace(/\r\n/g,'\n'); }
   function safeDecodeURI(s){ try { return decodeURIComponent(s); } catch(e){ return s; } }
+
+  // URL-safe Base64 -> text
   function b64UrlToText(s){
     try {
       s = (s||'').replace(/-/g, '+').replace(/_/g, '/');
@@ -61,12 +62,7 @@
     } catch(e){ return null; }
   }
 
-  // Optional: strip basic markdown bold **…**
-  function stripBasicMarkdownBold(s){
-    return s.replace(/\*\*(.*?)\*\*/g, '$1');
-  }
-
-  // ---- load priority: #b64 -> #text -> ?text ----
+  // Priority: #b64 -> #text -> ?text
   const b64 = fromHash('b64');
   const hText = fromHash('text');
   const qText = q('text');
@@ -81,12 +77,8 @@
     content = normaliseNewlines( decodePlus( safeDecodeURI(qText) ) );
   }
 
-  // Toggle this ON if you want to automatically remove **bold** markup:
-  // content = stripBasicMarkdownBold(content);
-
   if (content) area.value = content;
 
-  // buttons
   document.getElementById('cp-select-btn').addEventListener('click', ()=>{ area.focus(); area.select(); });
   document.getElementById('cp-copy-btn').addEventListener('click', async ()=>{
     try{
@@ -100,7 +92,5 @@
   });
 })();
 </script>
-
-
 </body>
 </html>
