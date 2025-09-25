@@ -36,28 +36,72 @@
   const area = document.getElementById('cp-text');
   const status = document.getElementById('cp-status');
 
-  function q(name){ return new URLSearchParams(location.search).get(name); }
-  function decodePlus(s){ return s.replace(/\+/g,' '); }
-  function normaliseNewlines(s){ return s.replace(/\\n/g,'\n').replace(/\r\n/g,'\n'); }
+  function getQueryParam(name){
+    return new URLSearchParams(location.search).get(name);
+  }
+  function getHashParam(name){
+    // hash like: #text=... or #b64=...
+    const h = location.hash.startsWith('#') ? location.hash.slice(1) : location.hash;
+    if(!h) return null;
+    const parts = h.split('&').reduce((acc, kv) => {
+      const [k, v] = kv.split('=');
+      acc[k] = v || '';
+      return acc;
+    }, {});
+    return parts[name] || null;
+  }
+  function decodePlus(s){ return (s || '').replace(/\+/g, ' '); }
+  function normaliseNewlines(s){ return (s || '').replace(/\\n/g, '\n').replace(/\r\n/g, '\n'); }
 
-  const raw = q('text');
-  if(raw){
-    let decoded = raw;
-    try { decoded = decodeURIComponent(raw); } catch(e){}
-    area.value = normaliseNewlines(decodePlus(decoded));
+  function decodeMaybeURIComponent(s){
+    try { return decodeURIComponent(s); } catch(e) { return s; }
   }
 
-  document.getElementById('cp-select-btn').addEventListener('click', ()=>{ area.focus(); area.select(); });
+  function b64UrlToText(s){
+    try {
+      // URL-safe base64: '-' => '+', '_' => '/', pad '='
+      s = s.replace(/-/g, '+').replace(/_/g, '/');
+      while (s.length % 4 !== 0) s += '=';
+      return atob(s);
+    } catch(e){ return null; }
+  }
 
-  document.getElementById('cp-copy-btn').addEventListener('click', async ()=>{
-    try{
+  // Priority: hash b64 -> hash text -> query text
+  const b64 = getHashParam('b64');
+  const hText = getHashParam('text');
+  const qText = getQueryParam('text');
+
+  if (b64) {
+    const t = b64UrlToText(b64);
+    if (t) area.value = normaliseNewlines(t);
+  } else if (hText) {
+    let t = decodeMaybeURIComponent(hText);
+    t = normaliseNewlines(decodePlus(t));
+    area.value = t;
+  } else if (qText) {
+    let t = decodeMaybeURIComponent(qText);
+    t = normaliseNewlines(decodePlus(t));
+    area.value = t;
+  }
+
+  document.getElementById('cp-select-btn').addEventListener('click', () => { area.focus(); area.select(); });
+
+  document.getElementById('cp-copy-btn').addEventListener('click', async () => {
+    try {
       area.focus(); area.select();
-      if(navigator.clipboard?.writeText){ await navigator.clipboard.writeText(area.value); }
-      else { document.execCommand('copy'); }
-      status.textContent = 'Copied!'; setTimeout(()=> status.textContent='', 1800);
-    }catch(e){ status.textContent = 'Copy failed. Select all and press Ctrl/Cmd + C.'; }
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(area.value);
+      } else {
+        document.execCommand('copy');
+      }
+      status.textContent = 'Copied!';
+      setTimeout(() => status.textContent = '', 1800);
+    } catch (e) {
+      status.textContent = 'Copy failed. Select all and press Ctrl/Cmd + C.';
+    }
   });
 })();
 </script>
+
 </body>
 </html>
