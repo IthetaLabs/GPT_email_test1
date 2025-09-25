@@ -111,27 +111,33 @@
       const src = document.getElementById('cp-html');
       const clone = src.cloneNode(true); // work on a clone
 
-      // Emoji whitelist
-      const ALLOWED = new Set(['📌','🔔','❗','✅','❌','📞','📧']);
-      const REPLACE = {
-        '🙂':'✅','😀':'✅','😁':'✅','😊':'✅','😃':'✅','😄':'✅',
-        '👍':'✅','👌':'✅','✔️':'✅','☑️':'✅',
-        'ℹ️':'📌','📍':'📌',
-        '⏰':'🔔','🛎️':'🔔',
-        '⚠️':'❗','❕':'❗','❗️':'❗',
-        '☎️':'📞','📱':'📞',
-        '✉️':'📧','💌':'📧'
-      };
-      let EMOJI_RE;
-      try { EMOJI_RE = new RegExp("\\p{Extended_Pictographic}\\uFE0F?|\\uFE0F","gu"); }
-      catch { EMOJI_RE = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]\uFE0F?/gu; }
+// Emoji whitelist
+const ALLOWED = new Set(['📌','🔔','❗','✅','❌','📞','📧']);
+const REPLACE = {
+  '🙂':'✅','😀':'✅','😁':'✅','😊':'✅','😃':'✅','😄':'✅',
+  '👍':'✅','👌':'✅','✔️':'✅','☑️':'✅',
+  'ℹ️':'📌','📍':'📌',
+  '⏰':'🔔','🛎️':'🔔',
+  '⚠️':'❗','❕':'❗','❗️':'❗',
+  '☎️':'📞','📱':'📞',
+  '✉️':'📧','💌':'📧'
+};
 
-      function sanitizeText(s){
-        return s.replace(EMOJI_RE, ch => {
-          if (ALLOWED.has(ch)) return ch;
-          if (REPLACE[ch]) return REPLACE[ch];
-          return '';
-        });
+let EMOJI_RE;
+try {
+  EMOJI_RE = new RegExp("\\p{Extended_Pictographic}\\uFE0F?|\\uFE0F", "gu");
+} catch {
+  EMOJI_RE = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]\uFE0F?/gu;
+}
+
+function sanitizeText(s) {
+  return s.replace(EMOJI_RE, ch => {
+    if (ALLOWED.has(ch)) {
+      return ch; // allowed directly
+    if (REPLACE[ch] && ALLOWED.has(REPLACE[ch])) {
+      return REPLACE[ch]; // replace but only if mapped emoji is allowed
+    return ''; // strip everything else
+  });
       }
       // Walk text nodes and sanitize emojis
       (function walk(node){
