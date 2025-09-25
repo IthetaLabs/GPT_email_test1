@@ -13,26 +13,18 @@
   button{padding:10px 14px;border:1px solid #d1d5db;border-radius:10px;background:#fff;cursor:pointer}
   .ok{color:#16a34a}
   .hint{font-size:12px;color:#6b7280;margin:10px 0 0 0}
-  /* The content block the user will copy */
+
   /* ---- Outlook-friendly preview styles ---- */
   #cp-html{
     border:1px solid #d1d5db;border-radius:12px;padding:16px;background:#fff;
-    font-family: Arial, Helvetica, sans-serif; /* font */
-    font-size: 11pt;                          /* size */
-    line-height: 1.5;                          /* spacing */
+    font-family: Arial, Helvetica, sans-serif;  /* font */
+    font-size: 11pt;                           /* size */
+    line-height: 1.5;                           /* spacing */
   }
   #cp-html p{ margin:0 0 10px 0 }
   #cp-html h1,#cp-html h2,#cp-html h3{ margin:16px 0 8px 0 }
   #cp-html ul,#cp-html ol{ margin:0 0 12px 20px }
   #cp-html li{ margin:6px 0 }
-  /* optional: enforce typography on all children in the preview */
-  /* #cp-html * { font-family: Arial, Helvetica, sans-serif; font-size: 11pt; line-height: 1.5; }
-  }
-  /* Reasonable default spacing for pasted paragraphs/lists */
-  #cp-html p{margin:0 0 10px 0}
-  #cp-html h1,#cp-html h2,#cp-html h3{margin:16px 0 8px 0}
-  #cp-html ul,#cp-html ol{margin:0 0 12px 20px}
-  #cp-html li{margin:6px 0}
 </style>
 </head>
 <body>
@@ -46,7 +38,7 @@
     <span id="cp-status" aria-live="polite" class="ok"></span>
   </div>
 
-  <!-- contenteditable so the browser copies HTML when selected -->
+  <!-- contenteditable so the browser can select/copy HTML -->
   <div id="cp-html" contenteditable="true">
     <p><em>Waiting for content…</em></p>
   </div>
@@ -72,112 +64,12 @@
     return parts[name] || null;
   }
   function safeDecode(s){ try { return decodeURIComponent(s); } catch(e){ return s; } }
-  function b64UrlToText(s){
-    try {
-      s = (s||'').replace(/-/g, '+').replace(/_/g, '/');
-      while (s.length % 4 !== 0) s += '=';
-      return atob(s);
-    } catch(e){ return null; }
-  }
-  function setHTML(html){
-    // Basic safety: allow expected email tags; you can add a sanitizer if you like.
-    box.innerHTML = html;
-  }
-  function setTextAsHtml(plain){
-    // Convert plain text with newlines into paragraphs for a nicer default
-    const escaped = plain
-      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    const html = escaped.split(/\n{2,}/).map(p => <p>${p.replace(/\n/g,'<br>')}</p>).join('');
-    box.innerHTML = html || '<p>(empty)</p>';
-  }
 
-  // Load order: #b64h (HTML) -> #html (HTML) -> #text (plain)
-  const b64h = fromHash('b64h');
-  const hHtml = fromHash('html');
-  const qText = fromQuery('text');
-
-  if (b64h) {
-    const raw = b64UrlToText(b64h);
-    if (raw != null) setHTML(raw);
-  } else if (hHtml) {
-    setHTML(safeDecode(hHtml));
-  } else if (qText) {
-    const t = safeDecode(qText).replace(/\\n/g, '\n').replace(/\r\n/g, '\n');
-    setTextAsHtml(t);
-  }
-
-  // Copy rich HTML
-document.getElementById('copyRich').addEventListener('click', async () => {
-  try {
-    // Work on a clone so we don’t mutate the on-screen preview
-    const src = document.getElementById('cp-html');
-    const clone = src.cloneNode(true);
-
-    // 1) Ensure headings have bottom margin
-    clone.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(h => {
-      h.style.margin = '0 0 8pt 0'; // add 8pt gap below every heading
-    });
-
-    // 2) Ensure the first block after any heading has a top margin
-    clone.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(h => {
-      const next = h.nextElementSibling;
-      if (next && ['P','UL','OL','DIV'].includes(next.tagName)) {
-        // Only add if there isn’t already a margin-top
-        if (!next.style.marginTop) next.style.marginTop = '6pt';
-      }
-    });
-
-    // Wrap with inline typography Outlook will keep
-    const wrapped =
-      <div style="font-family: Arial, Helvetica, sans-serif; font-size: 11pt; line-height: 1.5;">${clone.innerHTML}</div>;
-
-    if (navigator.clipboard && window.ClipboardItem) {
-      await navigator.clipboard.write([
-        new ClipboardItem({
-          'text/html': new Blob([wrapped], { type: 'text/html' }),
-          'text/plain': new Blob([src.innerText], { type: 'text/plain' })
-        })
-      ]);
-    } else {
-      // Fallback: copy via hidden editable container
-      const tmp = document.createElement('div');
-      tmp.style.position = 'fixed'; tmp.style.left = '-9999px';
-      tmp.contentEditable = 'true'; tmp.innerHTML = wrapped;
-      document.body.appendChild(tmp);
-
-      const range = document.createRange();
-      range.selectNodeContents(tmp);
-      const sel = window.getSelection();
-      sel.removeAllRanges(); sel.addRange(range);
-      document.execCommand('copy'); sel.removeAllRanges();
-
-      document.body.removeChild(tmp);
-    }
-
-    document.getElementById('cp-status').textContent = 'Copied!';
-    setTimeout(()=> document.getElementById('cp-status').textContent = '', 1800);
-  } catch(e){
-    document.getElementById('cp-status').textContent = 'Copy failed. Select all and press Ctrl/Cmd + C.';
-  }
-});
-
-  // Copy plain text
-  document.getElementById('copyPlain').addEventListener('click', async () => {
+  // URL-safe Base64 -> UTF-8 text
+  function b64UrlToUtf8(s){
     try{
-      const txt = box.innerText;
-      if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(txt); }
-      else {
-        const tmp = document.createElement('textarea');
-        tmp.value = txt; document.body.appendChild(tmp);
-        tmp.select(); document.execCommand('copy'); document.body.removeChild(tmp);
-      }
-      status.textContent = 'Copied!';
-      setTimeout(()=> status.textContent='', 1800);
-    } catch(e){
-      status.textContent = 'Copy failed.';
-    }
-  });
-})();
-</script>
-</body>
-</html>
+      s = (s||'').replace(/-/g,'+').replace(/_/g,'/');
+      while (s.length % 4) s += '=';
+      const bin = atob(s);
+      const bytes = new Uint8Array(bin.length);
+      for (let i=0;i<bin.lengt
