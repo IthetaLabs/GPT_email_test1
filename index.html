@@ -111,33 +111,29 @@
       const src = document.getElementById('cp-html');
       const clone = src.cloneNode(true); // work on a clone
 
-     // Robust emoji matcher:
-// 1) Primary: full emoji "clusters" (pictographs with optional VS16 and ZWJ-joined parts)
-// 2) Fallback: broad Unicode ranges if the browser doesn't support \p{…}
-let EMOJI_RE;
-try {
-  // Matches: pictograph + optional VS16, then zero or more (ZWJ + pictograph + optional VS16)
-  EMOJI_RE = new RegExp(
-    "(?:\\p{Extended_Pictographic}\\uFE0F?(?:\\u200D\\p{Extended_Pictographic}\\uFE0F?)*)",
-    "gu"
-  );
-} catch {
-  // Fallback for older browsers (covers most emojis)
-  EMOJI_RE = /(?:[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]\uFE0F?(?:\u200D[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]\uFE0F?)*)/gu;
-}
+      // ---- 0) Emoji allow-list: keep ONLY these; drop all others ----
+      const ALLOWED = new Set(['📌','🔔','❗','✅','❌','📞','📧']);
 
-// Keep ONLY allow-listed emojis; drop everything else.
-function sanitizeTextKeepOnlyAllowed(s) {
-  return s.replace(EMOJI_RE, (cluster) => (ALLOWED.has(cluster) ? cluster : ""));
-}
+      // Robust emoji matcher: full emoji clusters (pictographs with optional VS16 and ZWJ sequences).
+      let EMOJI_RE;
+      try {
+        EMOJI_RE = new RegExp("(?:\\p{Extended_Pictographic}\\uFE0F?(?:\\u200D\\p{Extended_Pictographic}\\uFE0F?)*)","gu");
+      } catch {
+        EMOJI_RE = /(?:[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]\uFE0F?(?:\u200D[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]\uFE0F?)*)/gu;
       }
+
+      function sanitizeTextKeepOnlyAllowed(s) {
+        return s.replace(EMOJI_RE, (cluster) => (ALLOWED.has(cluster) ? cluster : ""));
+      }
+
       // Walk text nodes and sanitize emojis
       (function walk(node){
         const w = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, null);
         const nodes = [];
         while (w.nextNode()) nodes.push(w.currentNode);
-        nodes.forEach(n => { n.nodeValue = sanitizeText(n.nodeValue); });
+        nodes.forEach(n => { n.nodeValue = sanitizeTextKeepOnlyAllowed(n.nodeValue); });
       })(clone);
+      // ---- /emoji allow-list ----
 
       // Heading spacing
       clone.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(h => { h.style.margin = '0 0 8pt 0'; });
@@ -155,7 +151,7 @@ function sanitizeTextKeepOnlyAllowed(s) {
         await navigator.clipboard.write([
           new ClipboardItem({
             'text/html': new Blob([wrapped], { type: 'text/html' }),
-            'text/plain': new Blob([src.innerText], { type: 'text/plain' })
+            'text/plain': new Blob([clone.innerText], { type: 'text/plain' }) // use sanitized clone for plain text too
           })
         ]);
       } else {
